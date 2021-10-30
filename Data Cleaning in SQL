@@ -1,0 +1,122 @@
+--looking at data
+SELECT * FROM persons."nashville_housing";
+
+--populate property address data
+SELECT * FROM persons."nashville_housing"
+WHERE propertyaddress IS NULL;
+
+SELECT * FROM persons."nashville_housing"
+ORDER BY parcelid;
+
+--where parcel ID is same the address is same
+--we self join the table on parcel ID
+-- the unique ID must be different so that it does not join the same row with itself
+SELECT a1.parcelid, a1.propertyaddress, b.parcelid, b.propertyaddress,
+COALESCE(a1.propertyaddress,b.propertyaddress)
+FROM persons."nashville_housing" a1
+JOIN persons."nashville_housing" b
+ON a1.parcelid = b.parcelid
+AND a1.uniqueid <> b.uniqueid
+WHERE a1.propertyaddress is null;
+
+UPDATE persons."nashville_housing" a1
+SET propertyaddress = COALESCE(a1.propertyaddress,b.propertyaddress)
+FROM persons."nashville_housing" b
+WHERE a1.parcelid = b.parcelid
+AND a1.uniqueid <> b.uniqueid
+AND a1.propertyaddress is null;
+
+--separating property address into columns
+SELECT propertyaddress FROM persons."nashville_housing";
+
+SELECT
+SUBSTRING(propertyaddress, 1, position(',' in propertyaddress )-1) AS Address1,
+SUBSTRING(propertyaddress, position(',' in propertyaddress)+1, length(propertyaddress)) AS Address2
+FROM persons."nashville_housing";
+
+ALTER TABLE persons."nashville_housing"
+ADD p_address varchar(255);
+
+UPDATE persons."nashville_housing"
+SET p_address = SUBSTRING(propertyaddress, 1, position(',' in propertyaddress )-1);
+ 
+ALTER TABLE persons."nashville_housing"
+ADD p_city varchar(255);
+
+UPDATE persons."nashville_housing"
+SET p_city = SUBSTRING(propertyaddress, position(',' in propertyaddress)+1, length(propertyaddress));
+
+SELECT * FROM persons."nashville_housing";
+
+--we will split the owner address
+SELECT owneraddress FROM persons."nashville_housing";
+
+SELECT
+SPLIT_PART(owneraddress,',',1) AS o_address,
+SPLIT_PART(owneraddress,',',2) AS o_city,
+SPLIT_PART(owneraddress,',',3) AS o_state
+FROM persons."nashville_housing";
+
+ALTER TABLE persons."nashville_housing"
+ADD o_address varchar(255);
+
+UPDATE persons."nashville_housing"
+SET o_address = SPLIT_PART(owneraddress,',',1);
+
+ALTER TABLE persons."nashville_housing"
+ADD o_city varchar(255);
+
+UPDATE persons."nashville_housing"
+SET o_city = SPLIT_PART(owneraddress,',',2);
+
+ALTER TABLE persons."nashville_housing"
+ADD o_state varchar(255);
+
+UPDATE persons."nashville_housing"
+SET o_state = SPLIT_PART(owneraddress,',',3);
+
+SELECT * FROM persons."nashville_housing";
+
+--changing Y/N to Yes/No in sold as vacant column
+SELECT DISTINCT soldasvacant, COUNT(soldasvacant)
+FROM persons."nashville_housing"
+GROUP BY soldasvacant
+ORDER BY 2;
+
+SELECT soldasvacant,
+CASE WHEN soldasvacant = 'Y' THEN 'Yes'
+     WHEN soldasvacant = 'N' THEN 'No'
+	 ELSE soldasvacant
+	 END
+FROM persons."nashville_housing";
+
+UPDATE persons."nashville_housing"
+SET soldasvacant = CASE WHEN soldasvacant = 'Y' THEN 'Yes'
+     WHEN soldasvacant = 'N' THEN 'No'
+	 ELSE soldasvacant
+	 END; 
+
+--removing duplicates by creating a cte
+WITH rownumcte AS(
+SELECT uniqueid FROM(
+SELECT uniqueid,
+ROW_NUMBER() OVER(
+	PARTITION BY parcelid, propertyaddress,saleprice,saledate, legalreference
+	) row_num
+FROM persons."nashville_housing") s
+WHERE row_num>1
+	) 
+DELETE FROM persons."nashville_housing"
+WHERE uniqueid IN (SELECT * FROM rownumcte);
+
+--deleting unused columns
+ALTER TABLE persons."nashville_housing"
+DROP COLUMN taxdistrict;
+
+
+
+
+
+
+
+
