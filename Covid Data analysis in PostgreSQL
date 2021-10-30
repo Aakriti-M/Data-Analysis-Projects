@@ -1,0 +1,142 @@
+--we look at data we will be using
+SELECT location, date, total_cases, new_cases, total_deaths, population
+FROM persons."Covid_deaths"
+ORDER BY location, date;
+
+--we look at total cases vs total deaths
+--the likelihood of death if you contract covid in your country
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 AS DeathPercentage
+FROM persons."Covid_deaths"
+ORDER BY location, date;
+
+--looking at total cases vs population
+--we look at data from India
+SELECT location, date, total_cases, population, (total_cases/population)*100 AS CasePercentage
+FROM persons."Covid_deaths"
+WHERE location='India'
+ORDER BY date DESC;
+
+--looking at countries with highest infection rate compared to population
+SELECT location, MAX(total_cases) AS HighestInfectionCount, population, 
+MAX((total_cases/population))*100 AS PercentagePouplationInfected
+FROM persons."Covid_deaths"
+WHERE total_cases IS NOT NULL AND population IS NOT NULL
+GROUP BY location, population
+ORDER BY PercentagePouplationInfected DESC;
+
+--looking at countries with highest death count
+SELECT location, MAX(cast(total_deaths AS int)) AS HighestDeathCount
+FROM persons."Covid_deaths"
+WHERE total_deaths IS NOT NULL AND continent IS NOT NULL
+GROUP BY location
+ORDER BY HighestDeathCount DESC;
+
+--looking at data by continent
+SELECT continent, MAX(cast(total_deaths AS int)) AS HighestDeathCount
+FROM persons."Covid_deaths"
+WHERE total_deaths IS NOT NULL AND continent IS NOT NULL
+GROUP BY continent
+ORDER BY HighestDeathCount DESC;
+
+-- continents with highest death count by population
+SELECT continent, MAX(cast(total_deaths AS int)) AS HighestDeathCount, population,
+MAX((total_deaths/population))*100 AS PercentagePouplationDead
+FROM persons."Covid_deaths"
+WHERE total_deaths IS NOT NULL AND population IS NOT NULL AND continent IS NOT NULL
+GROUP BY continent, population
+ORDER BY PercentagePouplationDead DESC;
+
+--	GLOBAL NUMBERS EVERY DAY
+SELECT date, SUM(new_cases) AS total_cases,SUM(new_deaths) AS total_deaths,
+(SUM(new_deaths)/SUM(new_cases))*100 AS deathpercentage
+FROM persons."Covid_deaths"
+WHERE new_cases IS NOT NULL AND new_cases<>0
+GROUP BY date
+ORDER BY date DESC;
+
+--TOTAL NEW CASES AND NEW DEATHS WORLDWIDE
+SELECT SUM(new_cases) AS total_cases,SUM(new_deaths) AS total_deaths,
+(SUM(new_deaths)/SUM(new_cases))*100 AS deathpercentage
+FROM persons."Covid_deaths"
+WHERE new_cases IS NOT NULL AND new_cases<>0 AND continent IS NOT NULL;
+
+
+--joining tables 
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations,
+SUM(v.new_vaccinations) OVER (Partition by d.location ORDER BY d.location, d.date) AS rolling_count
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+ORDER BY d.location, d.date;
+
+
+--let's create a temporary table
+--by doing this we can use the calculated column further for new calculations
+WITH PopvsVac (continent, location,date,population,new_vaccinations,rolling_count)
+AS(SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations,
+SUM(v.new_vaccinations) OVER (Partition by d.location ORDER BY d.location, d.date) AS rolling_count
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+WHERE d.continent IS NOT NULL
+)
+SELECT *, (rolling_count/population)*100 AS Percentage
+FROM PopvsVac;
+
+--TEMP TABLE
+DROP TABLE IF EXISTS percentpeoplevaccinated;
+CREATE TABLE percentpeoplevaccinated(
+continent varchar, location varchar, date date, population float, new_vaccinations float, rolling_count float);
+
+INSERT INTO percentpeoplevaccinated
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations,
+SUM(v.new_vaccinations) OVER (Partition by d.location ORDER BY d.location, d.date) AS rolling_count
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+WHERE d.continent IS NOT NULL;
+
+--creating a view for data visualization
+
+CREATE VIEW persons.percentpopulationvaccinated AS 
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations,
+SUM(v.new_vaccinations) OVER (Partition by d.location ORDER BY d.location, d.date) AS rolling_count
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+WHERE d.continent IS NOT NULL;
+
+
+SELECT *, (rolling_count/population)*100 AS Percentage
+FROM percentpeoplevaccinated;
+
+--let's look at some more data
+--people fully vaccinated by population
+SELECT d.population, v.people_fully_vaccinated, d.location,
+(v.people_fully_vaccinated/d.population)*100 AS percentage, d.date,
+SUM(v.people_fully_vaccinated) OVER (Partition by d.location ORDER BY d.location, d.date) AS rolling_count
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+WHERE d.continent IS NOT NULL AND d.population IS NOT NULL
+ORDER BY d.location, d.date;
+
+--hospital beds for the population of India
+SELECT d.population, d.location,d.date, (v.hospital_beds_per_thousand/10) AS percentage_of_beds
+FROM persons."Covid_deaths" d
+JOIN persons."covid_vaccinations" v
+ON d.location=v.location
+AND d.date=v.date
+WHERE d.continent IS NOT NULL AND d.population IS NOT NULL
+AND d.location='India'
+ORDER BY d.location, d.date;
+
+
+
+
+
